@@ -1,24 +1,43 @@
 import 'dart:math' as math;
 
+import 'package:analyzer/analysis_rule/analysis_rule.dart';
+import 'package:analyzer/analysis_rule/rule_context.dart';
+import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer/error/listener.dart';
-import 'package:custom_lint_builder/custom_lint_builder.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/error/error.dart';
 
-class InsufficientColorContrast extends DartLintRule {
-  const InsufficientColorContrast() : super(code: _code);
-
-  static const _code = LintCode(
-    name: 'insufficient_color_contrast',
-    problemMessage:
-        'The color contrast ratio between the foreground and background is '
-        'below the WCAG AA minimum ({0}:1 required, {1}:1 found). '
-        'Only statically determinable colors are checked.',
+class InsufficientColorContrastRule extends AnalysisRule {
+  static const LintCode code = LintCode(
+    'insufficient_color_contrast',
+    'The color contrast ratio between the foreground and background is '
+        'below the WCAG AA minimum. Only statically determinable colors are checked.',
     correctionMessage:
         'Choose colors with a sufficient contrast ratio. Use a tool like '
         'https://webaim.org/resources/contrastchecker/ to verify. '
         'Note: colors from Theme, variables, or runtime expressions cannot '
         'be checked statically.',
   );
+
+  InsufficientColorContrastRule()
+      : super(
+            name: 'insufficient_color_contrast',
+            description: 'Warn on insufficient color contrast ratios');
+
+  @override
+  LintCode get diagnosticCode => code;
+
+  @override
+  void registerNodeProcessors(
+      RuleVisitorRegistry registry, RuleContext context) {
+    registry.addInstanceCreationExpression(this, _Visitor(this, context));
+  }
+}
+
+class _Visitor extends SimpleAstVisitor<void> {
+  final InsufficientColorContrastRule rule;
+  final RuleContext context;
+  _Visitor(this.rule, this.context);
 
   static const _backgroundWidgets = {
     'Container': 'color',
@@ -45,42 +64,23 @@ class InsufficientColorContrast extends DartLintRule {
   static const _iconWidgets = {'Icon', 'ImageIcon'};
 
   @override
-  void run(
-    CustomLintResolver resolver,
-    DiagnosticReporter reporter,
-    CustomLintContext context,
-  ) {
-    context.registry.addInstanceCreationExpression((node) {
-      final typeName = node.constructorName.type.name.lexeme;
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    final typeName = node.constructorName.type.name.lexeme;
+    final bgArgName = _backgroundWidgets[typeName];
+    if (bgArgName == null) return;
 
-      // Only enter from a background-providing widget.
-      final bgArgName = _backgroundWidgets[typeName];
-      if (bgArgName == null) return;
+    final bgColor = _extractNamedColor(node, bgArgName);
+    if (bgColor == null) return;
 
-      final bgColor = _extractNamedColor(node, bgArgName);
-      if (bgColor == null) return; // dynamic/theme color — skip
-
-      // Walk the entire child subtree of this node looking for foreground
-      // elements (Text, RichText, Icon, etc.) that carry a color.
-      _walkChildSubtree(node, (foregroundNode, fgColor, isLargeText) {
-        final ratio = _contrastRatio(
-          _relativeLuminance(bgColor.r, bgColor.g, bgColor.b),
-          _relativeLuminance(fgColor.r, fgColor.g, fgColor.b),
-        );
-
-        final threshold = isLargeText ? 3.0 : 4.5;
-
-        if (ratio < threshold) {
-          reporter.atNode(
-            foregroundNode,
-            _code,
-            arguments: [
-              threshold.toStringAsFixed(1),
-              ratio.toStringAsFixed(2),
-            ],
-          );
-        }
-      });
+    _walkChildSubtree(node, (foregroundNode, fgColor, isLargeText) {
+      final ratio = _contrastRatio(
+        _relativeLuminance(bgColor.r, bgColor.g, bgColor.b),
+        _relativeLuminance(fgColor.r, fgColor.g, fgColor.b),
+      );
+      final threshold = isLargeText ? 3.0 : 4.5;
+      if (ratio < threshold) {
+        rule.reportAtNode(foregroundNode);
+      }
     });
   }
 
@@ -120,8 +120,7 @@ class InsufficientColorContrast extends DartLintRule {
       if (_textWidgets.contains(typeName)) {
         final result = _extractTextForegroundColor(current);
         if (result != null) {
-          final isLarge = _isLargeText(current);
-          onForeground(current, result, isLarge);
+          onForeground(current, result, _isLargeText(current));
         }
         enqueueArgs(current);
         continue;
@@ -145,18 +144,14 @@ class InsufficientColorContrast extends DartLintRule {
         continue;
       }
 
-      if (_backgroundWidgets.containsKey(typeName)) {
-        continue;
-      }
+      if (_backgroundWidgets.containsKey(typeName)) continue;
 
       enqueueArgs(current);
     }
   }
 
   ({int r, int g, int b})? _extractNamedColor(
-    InstanceCreationExpression node,
-    String argName,
-  ) {
+      InstanceCreationExpression node, String argName) {
     for (final arg in node.argumentList.arguments) {
       if (arg is NamedExpression && arg.name.label.name == argName) {
         return _parseColor(arg.expression);
@@ -166,8 +161,7 @@ class InsufficientColorContrast extends DartLintRule {
   }
 
   ({int r, int g, int b})? _extractTextForegroundColor(
-    InstanceCreationExpression textNode,
-  ) {
+      InstanceCreationExpression textNode) {
     for (final arg in textNode.argumentList.arguments) {
       if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
       return _extractTextStyleColor(arg.expression);
@@ -181,16 +175,13 @@ class InsufficientColorContrast extends DartLintRule {
     }
     if (expr is InstanceCreationExpression) {
       final name = expr.constructorName.type.name.lexeme;
-      if (name == 'TextStyle') {
-        return _extractNamedColor(expr, 'color');
-      }
+      if (name == 'TextStyle') return _extractNamedColor(expr, 'color');
     }
     return null;
   }
 
   ({int r, int g, int b})? _extractTextSpanColor(
-    InstanceCreationExpression span,
-  ) {
+      InstanceCreationExpression span) {
     for (final arg in span.argumentList.arguments) {
       if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
       return _extractTextStyleColor(arg.expression);
@@ -204,10 +195,8 @@ class InsufficientColorContrast extends DartLintRule {
       final styleExpr = arg.expression;
       if (styleExpr is! InstanceCreationExpression) continue;
       if (styleExpr.constructorName.type.name.lexeme != 'TextStyle') continue;
-
       double? fontSize;
       bool isBold = false;
-
       for (final styleArg in styleExpr.argumentList.arguments) {
         if (styleArg is! NamedExpression) continue;
         final name = styleArg.name.label.name;
@@ -219,15 +208,11 @@ class InsufficientColorContrast extends DartLintRule {
         if (name == 'fontWeight') {
           final expr = styleArg.expression;
           if (expr is PrefixedIdentifier) {
-            final weightName = expr.identifier.name;
-            isBold = weightName == 'bold' ||
-                weightName == 'w700' ||
-                weightName == 'w800' ||
-                weightName == 'w900';
+            final w = expr.identifier.name;
+            isBold = w == 'bold' || w == 'w700' || w == 'w800' || w == 'w900';
           }
         }
       }
-
       if (fontSize != null) {
         if (fontSize >= 18.0) return true;
         if (isBold && fontSize >= 14.0) return true;
@@ -238,11 +223,9 @@ class InsufficientColorContrast extends DartLintRule {
 
   ({int r, int g, int b})? _parseColor(Expression expr) {
     if (expr is ParenthesizedExpression) return _parseColor(expr.expression);
-
     if (expr is InstanceCreationExpression) {
       final name = expr.constructorName.type.name.lexeme;
       final ctor = expr.constructorName.name?.name;
-
       if (name == 'Color' && ctor == null) {
         final arg = expr.argumentList.arguments.firstOrNull;
         if (arg is IntegerLiteral) {
@@ -250,7 +233,6 @@ class InsufficientColorContrast extends DartLintRule {
           return (r: (v >> 16) & 0xFF, g: (v >> 8) & 0xFF, b: v & 0xFF);
         }
       }
-
       if (name == 'Color' && ctor == 'fromARGB') {
         final ints = expr.argumentList.arguments
             .whereType<IntegerLiteral>()
@@ -258,36 +240,25 @@ class InsufficientColorContrast extends DartLintRule {
             .toList();
         if (ints.length == 4) return (r: ints[1], g: ints[2], b: ints[3]);
       }
-
       if (name == 'Color' && ctor == 'fromRGBO') {
-        final ints = expr.argumentList.arguments
-            .whereType<IntegerLiteral>()
-            .map((e) => e.value ?? 0)
-            .toList();
-        if (ints.length == 3) return (r: ints[0], g: ints[1], b: ints[2]);
-        final allArgs = expr.argumentList.arguments;
-        if (allArgs.length == 4) {
-          int? r, g, b;
-          if (allArgs[0] is IntegerLiteral) {
-            r = (allArgs[0] as IntegerLiteral).value;
-          }
-          if (allArgs[1] is IntegerLiteral) {
-            g = (allArgs[1] as IntegerLiteral).value;
-          }
-          if (allArgs[2] is IntegerLiteral) {
-            b = (allArgs[2] as IntegerLiteral).value;
-          }
-          if (r != null && g != null && b != null) {
-            return (r: r, g: g, b: b);
-          }
+        final args = expr.argumentList.arguments;
+        if (args.length == 4) {
+          final r = args[0] is IntegerLiteral
+              ? (args[0] as IntegerLiteral).value
+              : null;
+          final g = args[1] is IntegerLiteral
+              ? (args[1] as IntegerLiteral).value
+              : null;
+          final b = args[2] is IntegerLiteral
+              ? (args[2] as IntegerLiteral).value
+              : null;
+          if (r != null && g != null && b != null) return (r: r, g: g, b: b);
         }
       }
     }
-
     if (expr is PrefixedIdentifier && expr.prefix.name == 'Colors') {
       return _knownColors[expr.identifier.name];
     }
-
     if (expr is IndexExpression) {
       final target = expr.target;
       final index = expr.index;
@@ -300,7 +271,6 @@ class InsufficientColorContrast extends DartLintRule {
         }
       }
     }
-
     return null;
   }
 

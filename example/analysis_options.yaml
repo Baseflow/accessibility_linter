@@ -8,9 +8,15 @@
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
 
-analyzer:
-  plugins:
-    - custom_lint
+plugins:
+  a11y_linter:
+    path: ../
+    diagnostics:
+      orientation_lock: true
+      missing_persistent_input_label: true
+      missing_focus_indicator: true
+      missing_semantics_label: true
+      insufficient_color_contrast: true
 
 linter:
   # The lint rules applied to this project can be customized in the
