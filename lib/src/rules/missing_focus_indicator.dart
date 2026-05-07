@@ -5,6 +5,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../utils/ast_utils.dart';
+
 class MissingFocusIndicatorRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'missing_focus_indicator',
@@ -56,47 +58,30 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name.lexeme;
+    final typeName = constructorTypeName(node);
 
-    if (_isWrappedWithExcludeSemantics(node)) return;
+    if (isWrappedWith(node, 'ExcludeSemantics')) return;
 
     if (_fullSupportWidgets.contains(typeName)) {
-      if (_hasNamedNonNull(node, 'focusColor') ||
-          _hasNamedNonNull(node, 'focusNode')) return;
+      if (hasNamedNonNull(node, 'focusColor') ||
+          hasNamedNonNull(node, 'focusNode')) {
+        return;
+      }
       rule.reportAtNode(node);
       return;
     }
 
     if (_buttonStyleWidgets.contains(typeName)) {
-      if (_hasNamedNonNull(node, 'focusNode')) return;
+      if (hasNamedNonNull(node, 'focusNode')) return;
       rule.reportAtNode(node);
       return;
     }
 
     if (typeName == 'GestureDetector') {
-      if (!_hasNamedNonNull(node, 'onTap')) return;
+      if (!hasNamedNonNull(node, 'onTap')) {
+        return;
+      }
       rule.reportAtNode(node);
     }
-  }
-
-  bool _hasNamedNonNull(InstanceCreationExpression node, String argName) {
-    for (final argument in node.argumentList.arguments) {
-      if (argument is NamedExpression && argument.name.label.name == argName) {
-        return argument.expression is! NullLiteral;
-      }
-    }
-    return false;
-  }
-
-  bool _isWrappedWithExcludeSemantics(AstNode node) {
-    AstNode? current = node.parent;
-    while (current != null) {
-      if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
-        if (name == 'ExcludeSemantics') return true;
-      }
-      current = current.parent;
-    }
-    return false;
   }
 }

@@ -5,6 +5,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../utils/ast_utils.dart';
+
 class MissingSemanticsLabelRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'missing_semantics_label',
@@ -50,10 +52,10 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name.lexeme;
+    final typeName = constructorTypeName(node);
 
     if (_targetWidgets.contains(typeName)) {
-      if (_hasSemanticLabelArgument(node)) return;
+      if (hasNamedNonNull(node, 'semanticLabel')) return;
       if (_isWrappedWithSemantics(node)) return;
       if (_hasClickableAncestorWithTooltipOrIconLabel(node)) return;
       rule.reportAtNode(node);
@@ -61,50 +63,26 @@ class _Visitor extends SimpleAstVisitor<void> {
     }
 
     if (_clickableWidgets.contains(typeName)) {
-      if (_hasTooltipArgument(node)) return;
+      if (hasNamedNonNull(node, 'tooltip')) return;
       if (_isWrappedWithSemantics(node)) return;
       if (_hasIconChildWithSemanticLabel(node)) return;
       rule.reportAtNode(node);
     }
   }
 
-  bool _hasSemanticLabelArgument(InstanceCreationExpression node) {
-    for (final argument in node.argumentList.arguments) {
-      if (argument is NamedExpression &&
-          argument.name.label.name == 'semanticLabel') {
-        return argument.expression is! NullLiteral;
-      }
-    }
-    return false;
-  }
-
+  /// Returns `true` if [node] is a descendant of `ExcludeSemantics`, or of a
+  /// `Semantics` widget that has a non-null `label` argument.
   bool _isWrappedWithSemantics(AstNode node) {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
+        final name = constructorTypeName(current);
         if (name == 'ExcludeSemantics') return true;
-        if (name == 'Semantics') {
-          for (final arg in current.argumentList.arguments) {
-            if (arg is NamedExpression &&
-                arg.name.label.name == 'label' &&
-                arg.expression is! NullLiteral) {
-              return true;
-            }
-          }
+        if (name == 'Semantics' && hasNamedNonNull(current, 'label')) {
+          return true;
         }
       }
       current = current.parent;
-    }
-    return false;
-  }
-
-  bool _hasTooltipArgument(InstanceCreationExpression node) {
-    for (final argument in node.argumentList.arguments) {
-      if (argument is NamedExpression &&
-          argument.name.label.name == 'tooltip') {
-        return argument.expression is! NullLiteral;
-      }
     }
     return false;
   }
@@ -126,19 +104,14 @@ class _Visitor extends SimpleAstVisitor<void> {
     while (stack.isNotEmpty) {
       final current = stack.removeLast();
       if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
+        final name = constructorTypeName(current);
         if (name == 'ExcludeSemantics') return true;
-        if (name == 'Semantics') {
-          for (final arg in current.argumentList.arguments) {
-            if (arg is NamedExpression &&
-                arg.name.label.name == 'label' &&
-                arg.expression is! NullLiteral) {
-              return true;
-            }
-          }
+        if (name == 'Semantics' && hasNamedNonNull(current, 'label')) {
+          return true;
         }
-        if (_targetWidgets.contains(name)) {
-          if (_hasSemanticLabelArgument(current)) return true;
+        if (_targetWidgets.contains(name) &&
+            hasNamedNonNull(current, 'semanticLabel')) {
+          return true;
         }
         for (final arg in current.argumentList.arguments) {
           stack.add(arg is NamedExpression ? arg.expression : arg);
@@ -154,9 +127,9 @@ class _Visitor extends SimpleAstVisitor<void> {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
+        final name = constructorTypeName(current);
         if (_clickableWidgets.contains(name)) {
-          if (_hasTooltipArgument(current)) return true;
+          if (hasNamedNonNull(current, 'tooltip')) return true;
           if (_hasIconChildWithSemanticLabel(current)) return true;
         }
       }

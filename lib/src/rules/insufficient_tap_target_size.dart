@@ -5,6 +5,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../utils/ast_utils.dart';
+
 class InsufficientTapTargetSizeRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'insufficient_tap_target_size',
@@ -57,9 +59,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name.lexeme;
-
-    if (!_tappableWidgets.contains(typeName)) return;
+    if (!_tappableWidgets.contains(constructorTypeName(node))) return;
 
     if (_isWrappedInShrinkBox(node)) {
       rule.reportAtNode(node);
@@ -80,7 +80,7 @@ class _Visitor extends SimpleAstVisitor<void> {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
+        final name = constructorTypeName(current);
         final constructorName = current.constructorName.name?.name;
         if (name == 'SizedBox' && constructorName == 'shrink') return true;
         if (_sizingWidgets.contains(name)) break;
@@ -94,7 +94,7 @@ class _Visitor extends SimpleAstVisitor<void> {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is InstanceCreationExpression) {
-        final name = current.constructorName.type.name.lexeme;
+        final name = constructorTypeName(current);
         if (_sizingWidgets.contains(name)) {
           final width = _getNamedDoubleArg(current, 'width');
           final height = _getNamedDoubleArg(current, 'height');
@@ -113,58 +113,53 @@ class _Visitor extends SimpleAstVisitor<void> {
   }
 
   bool _hasInsufficientMinimumSizeInStyle(InstanceCreationExpression node) {
-    for (final arg in node.argumentList.arguments) {
-      if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
+    final styleArg = getNamedArg(node, 'style');
+    if (styleArg == null) return false;
 
-      final styleExpr = arg.expression;
-      if (styleExpr is! InstanceCreationExpression) continue;
+    final styleExpr = styleArg.expression;
+    if (styleExpr is! InstanceCreationExpression) return false;
+    if (constructorTypeName(styleExpr) != 'ButtonStyle') return false;
 
-      final styleTypeName = styleExpr.constructorName.type.name.lexeme;
-      if (styleTypeName != 'ButtonStyle') continue;
+    for (final styleArg in styleExpr.argumentList.arguments) {
+      if (styleArg is! NamedExpression) continue;
+      if (styleArg.name.label.name != 'minimumSize') continue;
 
-      for (final styleArg in styleExpr.argumentList.arguments) {
-        if (styleArg is! NamedExpression) continue;
-        if (styleArg.name.label.name != 'minimumSize') continue;
+      final minSizeExpr = styleArg.expression;
+      if (minSizeExpr is! InstanceCreationExpression) continue;
 
-        final minSizeExpr = styleArg.expression;
-        if (minSizeExpr is! InstanceCreationExpression) continue;
+      final minSizeTypeName = constructorTypeName(minSizeExpr);
+      if (minSizeTypeName != 'WidgetStatePropertyAll' &&
+          minSizeTypeName != 'MaterialStatePropertyAll') {
+        continue;
+      }
 
-        final minSizeTypeName = minSizeExpr.constructorName.type.name.lexeme;
-        if (minSizeTypeName != 'WidgetStatePropertyAll' &&
-            minSizeTypeName != 'MaterialStatePropertyAll') continue;
+      final args = minSizeExpr.argumentList.arguments;
+      if (args.isEmpty) continue;
 
-        final args = minSizeExpr.argumentList.arguments;
-        if (args.isEmpty) continue;
+      final sizeArg = args.first;
+      if (sizeArg is! InstanceCreationExpression) continue;
+      if (constructorTypeName(sizeArg) != 'Size') continue;
 
-        final sizeArg = args.first;
-        if (sizeArg is! InstanceCreationExpression) continue;
-        if (sizeArg.constructorName.type.name.lexeme != 'Size') continue;
+      final positional = sizeArg.argumentList.arguments
+          .whereType<Expression>()
+          .where((e) => e is! NamedExpression)
+          .toList();
 
-        final positional = sizeArg.argumentList.arguments
-            .whereType<Expression>()
-            .where((e) => e is! NamedExpression)
-            .toList();
+      if (positional.length < 2) continue;
 
-        if (positional.length < 2) continue;
+      final w = _toDouble(positional[0]);
+      final h = _toDouble(positional[1]);
 
-        final w = _toDouble(positional[0]);
-        final h = _toDouble(positional[1]);
-
-        if ((w != null && w < _minTapSize) || (h != null && h < _minTapSize)) {
-          return true;
-        }
+      if ((w != null && w < _minTapSize) || (h != null && h < _minTapSize)) {
+        return true;
       }
     }
     return false;
   }
 
   double? _getNamedDoubleArg(InstanceCreationExpression node, String argName) {
-    for (final arg in node.argumentList.arguments) {
-      if (arg is NamedExpression && arg.name.label.name == argName) {
-        return _toDouble(arg.expression);
-      }
-    }
-    return null;
+    final arg = getNamedArg(node, argName);
+    return arg != null ? _toDouble(arg.expression) : null;
   }
 
   double? _toDouble(Expression expr) {

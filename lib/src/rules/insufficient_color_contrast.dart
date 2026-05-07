@@ -7,6 +7,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../utils/ast_utils.dart';
+
 class InsufficientColorContrastRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'insufficient_color_contrast',
@@ -65,8 +67,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name.lexeme;
-    final bgArgName = _backgroundWidgets[typeName];
+    final bgArgName = _backgroundWidgets[constructorTypeName(node)];
     if (bgArgName == null) return;
 
     final bgColor = _extractNamedColor(node, bgArgName);
@@ -96,8 +97,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
     void enqueueArgs(InstanceCreationExpression node) {
       for (final arg in node.argumentList.arguments) {
-        final expr = arg is NamedExpression ? arg.expression : arg;
-        stack.add(expr);
+        stack.add(arg is NamedExpression ? arg.expression : arg);
       }
     }
 
@@ -115,7 +115,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
       if (current is! InstanceCreationExpression) continue;
 
-      final typeName = current.constructorName.type.name.lexeme;
+      final typeName = constructorTypeName(current);
 
       if (_textWidgets.contains(typeName)) {
         final result = _extractTextForegroundColor(current);
@@ -152,71 +152,68 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   ({int r, int g, int b})? _extractNamedColor(
       InstanceCreationExpression node, String argName) {
-    for (final arg in node.argumentList.arguments) {
-      if (arg is NamedExpression && arg.name.label.name == argName) {
-        return _parseColor(arg.expression);
-      }
-    }
-    return null;
+    final arg = getNamedArg(node, argName);
+    return arg != null ? _parseColor(arg.expression) : null;
   }
 
   ({int r, int g, int b})? _extractTextForegroundColor(
       InstanceCreationExpression textNode) {
-    for (final arg in textNode.argumentList.arguments) {
-      if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
-      return _extractTextStyleColor(arg.expression);
-    }
-    return null;
+    final styleArg = getNamedArg(textNode, 'style');
+    return styleArg != null
+        ? _extractTextStyleColor(styleArg.expression)
+        : null;
   }
 
   ({int r, int g, int b})? _extractTextStyleColor(Expression expr) {
     if (expr is ParenthesizedExpression) {
       return _extractTextStyleColor(expr.expression);
     }
-    if (expr is InstanceCreationExpression) {
-      final name = expr.constructorName.type.name.lexeme;
-      if (name == 'TextStyle') return _extractNamedColor(expr, 'color');
+    if (expr is InstanceCreationExpression &&
+        constructorTypeName(expr) == 'TextStyle') {
+      return _extractNamedColor(expr, 'color');
     }
     return null;
   }
 
   ({int r, int g, int b})? _extractTextSpanColor(
       InstanceCreationExpression span) {
-    for (final arg in span.argumentList.arguments) {
-      if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
-      return _extractTextStyleColor(arg.expression);
-    }
-    return null;
+    final styleArg = getNamedArg(span, 'style');
+    return styleArg != null
+        ? _extractTextStyleColor(styleArg.expression)
+        : null;
   }
 
   bool _isLargeText(InstanceCreationExpression textNode) {
-    for (final arg in textNode.argumentList.arguments) {
-      if (arg is! NamedExpression || arg.name.label.name != 'style') continue;
-      final styleExpr = arg.expression;
-      if (styleExpr is! InstanceCreationExpression) continue;
-      if (styleExpr.constructorName.type.name.lexeme != 'TextStyle') continue;
-      double? fontSize;
-      bool isBold = false;
-      for (final styleArg in styleExpr.argumentList.arguments) {
-        if (styleArg is! NamedExpression) continue;
-        final name = styleArg.name.label.name;
-        if (name == 'fontSize') {
-          final expr = styleArg.expression;
-          if (expr is DoubleLiteral) fontSize = expr.value;
-          if (expr is IntegerLiteral) fontSize = (expr.value ?? 0).toDouble();
-        }
-        if (name == 'fontWeight') {
-          final expr = styleArg.expression;
-          if (expr is PrefixedIdentifier) {
-            final w = expr.identifier.name;
-            isBold = w == 'bold' || w == 'w700' || w == 'w800' || w == 'w900';
-          }
+    final styleArg = getNamedArg(textNode, 'style');
+    if (styleArg == null) return false;
+
+    final styleExpr = styleArg.expression;
+    if (styleExpr is! InstanceCreationExpression) return false;
+    if (constructorTypeName(styleExpr) != 'TextStyle') return false;
+
+    double? fontSize;
+    bool isBold = false;
+
+    for (final styleArg in styleExpr.argumentList.arguments) {
+      if (styleArg is! NamedExpression) continue;
+      final name = styleArg.name.label.name;
+      if (name == 'fontSize') {
+        final expr = styleArg.expression;
+        if (expr is DoubleLiteral) fontSize = expr.value;
+        if (expr is IntegerLiteral) fontSize = (expr.value ?? 0).toDouble();
+      }
+      if (name == 'fontWeight') {
+        final expr = styleArg.expression;
+        if (expr is PrefixedIdentifier) {
+          final w = expr.identifier.name;
+          isBold = w == 'bold' || w == 'w700' || w == 'w800' || w == 'w900';
         }
       }
-      if (fontSize != null) {
-        if (fontSize >= 18.0) return true;
-        if (isBold && fontSize >= 14.0) return true;
-      }
+    }
+
+    if (fontSize != null) {
+      if (fontSize >= 18.0) return true;
+      if (isBold && fontSize >= 14.0) return true;
     }
     return false;
   }
@@ -224,7 +221,7 @@ class _Visitor extends SimpleAstVisitor<void> {
   ({int r, int g, int b})? _parseColor(Expression expr) {
     if (expr is ParenthesizedExpression) return _parseColor(expr.expression);
     if (expr is InstanceCreationExpression) {
-      final name = expr.constructorName.type.name.lexeme;
+      final name = constructorTypeName(expr);
       final ctor = expr.constructorName.name?.name;
       if (name == 'Color' && ctor == null) {
         final arg = expr.argumentList.arguments.firstOrNull;

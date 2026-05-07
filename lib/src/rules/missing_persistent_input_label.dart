@@ -5,6 +5,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
+import '../utils/ast_utils.dart';
+
 class MissingPersistentInputLabelRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'missing_persistent_input_label',
@@ -39,20 +41,17 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = node.constructorName.type.name.lexeme;
-    if (!_inputWidgets.contains(typeName)) return;
+    if (!_inputWidgets.contains(constructorTypeName(node))) return;
     if (_hasPersistentLabel(node)) return;
     rule.reportAtNode(node);
   }
 
   bool _hasPersistentLabel(InstanceCreationExpression node) {
-    for (final argument in node.argumentList.arguments) {
-      if (argument is! NamedExpression) continue;
-      if (argument.name.label.name != 'decoration') continue;
-      if (argument.expression is NullLiteral) return false;
-      return _decorationHasPersistentLabel(argument.expression);
+    final decorationArg = getNamedArg(node, 'decoration');
+    if (decorationArg == null || decorationArg.expression is NullLiteral) {
+      return false;
     }
-    return false;
+    return _decorationHasPersistentLabel(decorationArg.expression);
   }
 
   bool _decorationHasPersistentLabel(Expression expression) {
@@ -60,20 +59,9 @@ class _Visitor extends SimpleAstVisitor<void> {
       return _decorationHasPersistentLabel(expression.expression);
     }
     if (expression is InstanceCreationExpression) {
-      final typeName = expression.constructorName.type.name.lexeme;
-      if (typeName != 'InputDecoration') return false;
-      return _inputDecorationHasLabel(expression);
-    }
-    return false;
-  }
-
-  bool _inputDecorationHasLabel(InstanceCreationExpression decoration) {
-    for (final argument in decoration.argumentList.arguments) {
-      if (argument is! NamedExpression) continue;
-      final name = argument.name.label.name;
-      if (name != 'labelText' && name != 'label') continue;
-      if (argument.expression is NullLiteral) return false;
-      return true;
+      if (constructorTypeName(expression) != 'InputDecoration') return false;
+      return hasNamedNonNull(expression, 'labelText') ||
+          hasNamedNonNull(expression, 'label');
     }
     return false;
   }
