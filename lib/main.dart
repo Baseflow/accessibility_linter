@@ -1,4 +1,5 @@
 import 'package:a11y_linter/src/rules/insufficient_color_contrast.dart';
+import 'package:a11y_linter/src/rules/insufficient_tap_target_size.dart';
 import 'package:a11y_linter/src/rules/missing_focus_indicator.dart';
 import 'package:a11y_linter/src/rules/missing_persistent_input_label.dart';
 import 'package:a11y_linter/src/rules/missing_semantics_label.dart';
@@ -15,6 +16,7 @@ class A11yPlugin extends Plugin {
   @override
   void register(PluginRegistry registry) {
     registry.registerLintRule(InsufficientColorContrastRule());
+    registry.registerLintRule(InsufficientTapTargetSizeRule());
     registry.registerLintRule(MissingFocusIndicatorRule());
     registry.registerLintRule(MissingPersistentInputLabelRule());
     registry.registerLintRule(MissingSemanticsLabelRule());

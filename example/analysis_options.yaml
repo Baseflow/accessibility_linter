@@ -17,6 +17,7 @@ plugins:
       missing_focus_indicator: true
       missing_semantics_label: true
       insufficient_color_contrast: true
+      insufficient_tap_target_size: true
 
 linter:
   # The lint rules applied to this project can be customized in the
