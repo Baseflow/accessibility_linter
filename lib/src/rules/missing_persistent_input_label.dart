@@ -5,7 +5,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-import '../utils/ast_utils.dart';
+import '../shared/missing_persistent_input_label_check.dart';
 
 class MissingPersistentInputLabelRule extends AnalysisRule {
   static const LintCode code = LintCode(
@@ -28,41 +28,15 @@ class MissingPersistentInputLabelRule extends AnalysisRule {
   @override
   void registerNodeProcessors(
       RuleVisitorRegistry registry, RuleContext context) {
-    registry.addInstanceCreationExpression(this, _Visitor(this, context));
+    registry.addInstanceCreationExpression(this, _Visitor(this));
   }
 }
 
 class _Visitor extends SimpleAstVisitor<void> {
   final MissingPersistentInputLabelRule rule;
-  final RuleContext context;
-  _Visitor(this.rule, this.context);
-
-  static const _inputWidgets = {'TextField', 'TextFormField'};
+  _Visitor(this.rule);
 
   @override
-  void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    if (!_inputWidgets.contains(constructorTypeName(node))) return;
-    if (_hasPersistentLabel(node)) return;
-    rule.reportAtNode(node);
-  }
-
-  bool _hasPersistentLabel(InstanceCreationExpression node) {
-    final decorationArg = getNamedArg(node, 'decoration');
-    if (decorationArg == null || decorationArg.expression is NullLiteral) {
-      return false;
-    }
-    return _decorationHasPersistentLabel(decorationArg.expression);
-  }
-
-  bool _decorationHasPersistentLabel(Expression expression) {
-    if (expression is ParenthesizedExpression) {
-      return _decorationHasPersistentLabel(expression.expression);
-    }
-    if (expression is InstanceCreationExpression) {
-      if (constructorTypeName(expression) != 'InputDecoration') return false;
-      return hasNamedNonNull(expression, 'labelText') ||
-          hasNamedNonNull(expression, 'label');
-    }
-    return false;
-  }
+  void visitInstanceCreationExpression(InstanceCreationExpression node) =>
+      checkMissingPersistentInputLabel(node, rule.reportAtNode);
 }

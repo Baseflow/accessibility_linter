@@ -5,7 +5,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-import '../utils/ast_utils.dart';
+import '../shared/missing_focus_indicator_check.dart';
 
 class MissingFocusIndicatorRule extends AnalysisRule {
   static const LintCode code = LintCode(
@@ -33,55 +33,15 @@ class MissingFocusIndicatorRule extends AnalysisRule {
   @override
   void registerNodeProcessors(
       RuleVisitorRegistry registry, RuleContext context) {
-    registry.addInstanceCreationExpression(this, _Visitor(this, context));
+    registry.addInstanceCreationExpression(this, _Visitor(this));
   }
 }
 
 class _Visitor extends SimpleAstVisitor<void> {
   final MissingFocusIndicatorRule rule;
-  final RuleContext context;
-  _Visitor(this.rule, this.context);
-
-  static const _fullSupportWidgets = {
-    'InkWell',
-    'InkResponse',
-    'IconButton',
-    'FloatingActionButton',
-    'CupertinoButton',
-  };
-
-  static const _buttonStyleWidgets = {
-    'ElevatedButton',
-    'TextButton',
-    'OutlinedButton',
-  };
+  _Visitor(this.rule);
 
   @override
-  void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final typeName = constructorTypeName(node);
-
-    if (isWrappedWith(node, 'ExcludeSemantics')) return;
-
-    if (_fullSupportWidgets.contains(typeName)) {
-      if (hasNamedNonNull(node, 'focusColor') ||
-          hasNamedNonNull(node, 'focusNode')) {
-        return;
-      }
-      rule.reportAtNode(node);
-      return;
-    }
-
-    if (_buttonStyleWidgets.contains(typeName)) {
-      if (hasNamedNonNull(node, 'focusNode')) return;
-      rule.reportAtNode(node);
-      return;
-    }
-
-    if (typeName == 'GestureDetector') {
-      if (!hasNamedNonNull(node, 'onTap')) {
-        return;
-      }
-      rule.reportAtNode(node);
-    }
-  }
+  void visitInstanceCreationExpression(InstanceCreationExpression node) =>
+      checkMissingFocusIndicator(node, rule.reportAtNode);
 }
