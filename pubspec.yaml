@@ -5,6 +5,9 @@ description: Flutter accessibility lint rules
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
+executables:
+  a11y_analyze: a11y_analyze
+
 dependencies:
   analyzer: ">=6.0.0 <13.0.0"
   analyzer_plugin: ">=0.11.0 <0.14.9"
