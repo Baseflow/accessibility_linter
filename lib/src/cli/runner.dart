@@ -10,6 +10,7 @@ import 'checkers/missing_focus_indicator_checker.dart';
 import 'checkers/missing_persistent_input_label_checker.dart';
 import 'checkers/missing_semantics_label_checker.dart';
 import 'checkers/orientation_lock_checker.dart';
+import 'package:path/path.dart' as p;
 
 List<A11yChecker> buildCheckers() => [
       OrientationLockChecker(),
@@ -21,7 +22,8 @@ List<A11yChecker> buildCheckers() => [
     ];
 
 Future<int> runAnalysis(String targetPath) async {
-  final collection = AnalysisContextCollection(includedPaths: [targetPath]);
+  final normalizedPath = p.normalize(Directory(targetPath).absolute.path);
+  final collection = AnalysisContextCollection(includedPaths: [normalizedPath]);
   var violationCount = 0;
 
   for (final context in collection.contexts) {
