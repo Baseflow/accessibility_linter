@@ -3,23 +3,9 @@ import 'dart:io';
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
 
-import 'checker.dart';
-import 'checkers/insufficient_color_contrast_checker.dart';
-import 'checkers/insufficient_tap_target_size_checker.dart';
-import 'checkers/missing_focus_indicator_checker.dart';
-import 'checkers/missing_persistent_input_label_checker.dart';
-import 'checkers/missing_semantics_label_checker.dart';
-import 'checkers/orientation_lock_checker.dart';
 import 'package:path/path.dart' as p;
 
-List<A11yChecker> buildCheckers() => [
-      OrientationLockChecker(),
-      MissingSemanticsLabelChecker(),
-      MissingFocusIndicatorChecker(),
-      MissingPersistentInputLabelChecker(),
-      InsufficientTapTargetSizeChecker(),
-      InsufficientColorContrastChecker(),
-    ];
+import 'checker.dart';
 
 Future<int> runAnalysis(String targetPath) async {
   final normalizedPath = p.normalize(Directory(targetPath).absolute.path);
@@ -42,7 +28,7 @@ Future<int> runAnalysis(String targetPath) async {
       final fileViolations =
           <({int line, int column, String rule, String message})>[];
 
-      for (final checker in buildCheckers()) {
+      for (final checker in [A11yChecker()]) {
         result.unit.accept(checker);
         for (final v in checker.violations) {
           final loc = result.lineInfo.getLocation(v.node.offset);

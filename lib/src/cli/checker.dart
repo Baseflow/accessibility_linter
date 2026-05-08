@@ -1,7 +1,31 @@
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 
+import '../shared/all_rules.dart';
 import 'violation.dart';
 
-abstract class A11yChecker extends RecursiveAstVisitor<void> {
+class A11yChecker extends RecursiveAstVisitor<void> {
   final List<Violation> violations = [];
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    super.visitInstanceCreationExpression(node);
+    for (final rule in allRules) {
+      rule.onInstanceCreation?.call(
+        node,
+        (n) => violations.add(Violation(n, rule.name, rule.message)),
+      );
+    }
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    super.visitMethodInvocation(node);
+    for (final rule in allRules) {
+      rule.onMethodInvocation?.call(
+        node,
+        (n) => violations.add(Violation(n, rule.name, rule.message)),
+      );
+    }
+  }
 }

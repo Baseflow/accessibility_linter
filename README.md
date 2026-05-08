@@ -108,3 +108,91 @@ See [Color contrast](https://baseflow.github.io/accessibility-guidelines/visual/
 ### `insufficient_tap_target_size`
 
 Warns when tappable widgets (`GestureDetector`, `InkWell`, buttons, etc.) are constrained below 24×24 logical pixels, per WCAG 2.5.8.
+
+---
+
+## Adding a new rule
+
+Each rule lives entirely in a single self-contained file under `lib/src/rules/`. Adding a new rule requires touching exactly two files:
+
+### 1. Create `lib/src/rules/my_new_rule.dart`
+
+Define the check function and a `RuleSpec` constant in the same file:
+
+```dart
+import 'package:analyzer/dart/ast/ast.dart';
+
+import '../shared/rule_spec.dart';
+
+const myNewRuleSpec = RuleSpec(
+  name: 'my_new_rule',
+  message: 'Short description of what is wrong.',
+  correctionMessage: 'Suggestion shown in the IDE on how to fix it.',
+  onInstanceCreation: checkMyNewRule, // or onMethodInvocation for method calls
+);
+
+void checkMyNewRule(
+  InstanceCreationExpression node,
+  void Function(AstNode) report,
+) {
+  // Inspect the AST node. Call report(node) when a violation is detected.
+}
+```
+
+Use `onInstanceCreation` for widget constructor calls and `onMethodInvocation` for static/instance method calls. Both can be provided if needed.
+
+### 2. Register it in `lib/src/shared/all_rules.dart`
+
+Add one import and one entry to the list:
+
+```dart
+import '../rules/my_new_rule.dart';
+
+const List<RuleSpec> allRules = [
+  // ... existing rules ...
+  myNewRuleSpec,
+];
+```
+
+That's it. Both the IDE plugin and the CLI `a11y_analyze` tool pick it up automatically — no other changes needed.
+
+### 3. Enable it in `analysis_options.yaml` (for IDE use)
+
+```yaml
+plugins:
+  a11y_linter:
+    diagnostics:
+      my_new_rule: true
+```
+
+---
+
+## Architecture
+
+```
+lib/
+  main.dart                        # IDE plugin entry point — loops over allRules
+  src/
+    rules/
+      a11y_analysis_rule.dart      # Generic AnalysisRule wrapper (IDE only)
+      orientation_lock.dart        # Check fn + RuleSpec (one file per rule)
+      missing_semantics_label.dart
+      missing_focus_indicator.dart
+      missing_persistent_input_label.dart
+      insufficient_tap_target_size.dart
+      insufficient_color_contrast.dart
+    shared/
+      rule_spec.dart               # RuleSpec data class
+      all_rules.dart               # Canonical list — the only registration point
+      color_data.dart              # Known Flutter color values
+    cli/
+      checker.dart                 # RecursiveAstVisitor driven by allRules
+      runner.dart                  # AnalysisContextCollection setup
+      violation.dart               # Violation data class
+    utils/
+      ast_utils.dart               # Shared AST helpers
+bin/
+  a11y_analyze.dart                # CLI entry point (~22 lines)
+```
+
+The `RuleSpec` data class is the bridge between the two entry points. The CLI drives a `RecursiveAstVisitor` from `allRules` directly. The IDE wraps each spec in a generic `A11yAnalysisRule` that registers `SimpleAstVisitor` callbacks with the analysis server registry.

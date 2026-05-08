@@ -1,9 +1,5 @@
-import 'package:a11y_linter/src/rules/insufficient_color_contrast.dart';
-import 'package:a11y_linter/src/rules/insufficient_tap_target_size.dart';
-import 'package:a11y_linter/src/rules/missing_focus_indicator.dart';
-import 'package:a11y_linter/src/rules/missing_persistent_input_label.dart';
-import 'package:a11y_linter/src/rules/missing_semantics_label.dart';
-import 'package:a11y_linter/src/rules/orientation_lock.dart';
+import 'package:a11y_linter/src/rules/a11y_analysis_rule.dart';
+import 'package:a11y_linter/src/shared/all_rules.dart';
 import 'package:analysis_server_plugin/plugin.dart';
 import 'package:analysis_server_plugin/registry.dart';
 
@@ -15,11 +11,8 @@ class A11yPlugin extends Plugin {
 
   @override
   void register(PluginRegistry registry) {
-    registry.registerLintRule(InsufficientColorContrastRule());
-    registry.registerLintRule(InsufficientTapTargetSizeRule());
-    registry.registerLintRule(MissingFocusIndicatorRule());
-    registry.registerLintRule(MissingPersistentInputLabelRule());
-    registry.registerLintRule(MissingSemanticsLabelRule());
-    registry.registerLintRule(OrientationLockRule());
+    for (final spec in allRules) {
+      registry.registerLintRule(A11yAnalysisRule(spec));
+    }
   }
 }
