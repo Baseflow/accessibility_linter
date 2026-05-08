@@ -51,7 +51,6 @@ Future<int> runAnalysis(String targetPath) async {
     }
   }
 
-  // Print formatted output
   if (violationsByFile.isEmpty) {
     return 0;
   }

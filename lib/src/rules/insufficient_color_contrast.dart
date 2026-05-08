@@ -2,21 +2,49 @@ import 'dart:math' as math;
 
 import 'package:analyzer/dart/ast/ast.dart';
 
+import '../shared/a11y_rule.dart';
 import '../shared/color_data.dart';
-import '../shared/rule_spec.dart';
 import '../utils/ast_utils.dart';
 
-const insufficientColorContrastSpec = RuleSpec(
-  name: 'insufficient_color_contrast',
-  message: 'The color contrast ratio between the foreground and background is '
-      'below the WCAG AA minimum. Only statically determinable colors are checked.',
-  correctionMessage:
+class InsufficientColorContrastRule extends A11yRule {
+  @override
+  String get name => 'insufficient_color_contrast';
+
+  @override
+  String get message =>
+      'The color contrast ratio between the foreground and background is '
+      'below the WCAG AA minimum. Only statically determinable colors are checked.';
+
+  @override
+  String get correctionMessage =>
       'Choose colors with a sufficient contrast ratio. Use a tool like '
       'https://webaim.org/resources/contrastchecker/ to verify. '
       'Note: colors from Theme, variables, or runtime expressions cannot '
-      'be checked statically.',
-  onInstanceCreation: checkInsufficientColorContrast,
-);
+      'be checked statically.';
+
+  @override
+  void checkInstanceCreation(
+    InstanceCreationExpression node,
+    void Function(AstNode) report,
+  ) {
+    final bgArgName = _backgroundWidgets[constructorTypeName(node)];
+    if (bgArgName == null) return;
+
+    final bgColor = _extractNamedColor(node, bgArgName);
+    if (bgColor == null) return;
+
+    _walkChildSubtree(node, (foregroundNode, fgColor, isLargeText) {
+      final ratio = _contrastRatio(
+        _relativeLuminance(bgColor.r, bgColor.g, bgColor.b),
+        _relativeLuminance(fgColor.r, fgColor.g, fgColor.b),
+      );
+      final threshold = isLargeText ? 3.0 : 4.5;
+      if (ratio < threshold) {
+        report(foregroundNode);
+      }
+    });
+  }
+}
 
 const _backgroundWidgets = <String, String>{
   'Container': 'color',
@@ -40,33 +68,6 @@ const _backgroundWidgets = <String, String>{
 };
 const _textWidgets = {'Text', 'RichText', 'SelectableText'};
 const _iconWidgets = {'Icon', 'ImageIcon'};
-
-/// Calls [report] with each foreground node whose contrast ratio against the
-/// nearest static background color falls below the WCAG AA threshold (4.5:1
-/// for normal text, 3:1 for large text / icons).
-void checkInsufficientColorContrast(
-  InstanceCreationExpression node,
-  void Function(AstNode) report,
-) {
-  final bgArgName = _backgroundWidgets[constructorTypeName(node)];
-  if (bgArgName == null) return;
-
-  final bgColor = _extractNamedColor(node, bgArgName);
-  if (bgColor == null) return;
-
-  _walkChildSubtree(node, (foregroundNode, fgColor, isLargeText) {
-    final ratio = _contrastRatio(
-      _relativeLuminance(bgColor.r, bgColor.g, bgColor.b),
-      _relativeLuminance(fgColor.r, fgColor.g, fgColor.b),
-    );
-    final threshold = isLargeText ? 3.0 : 4.5;
-    if (ratio < threshold) {
-      report(foregroundNode);
-    }
-  });
-}
-
-// ─── Child subtree walker ─────────────────────────────────────────────────────
 
 void _walkChildSubtree(
   InstanceCreationExpression root,
@@ -230,8 +231,6 @@ Rgb? _parseColor(Expression expr) {
   }
   return null;
 }
-
-// ─── Contrast math ────────────────────────────────────────────────────────────
 
 double _relativeLuminance(int r, int g, int b) {
   double linearize(int c) {

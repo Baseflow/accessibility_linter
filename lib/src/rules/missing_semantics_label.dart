@@ -1,21 +1,49 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
-import '../shared/rule_spec.dart';
+import '../shared/a11y_rule.dart';
 import '../utils/ast_utils.dart';
 
-const missingSemanticsLabelSpec = RuleSpec(
-  name: 'missing_semantics_label',
-  message: 'Icon and Image widgets should have a semanticLabel, be wrapped '
+class MissingSemanticsLabelRule extends A11yRule {
+  @override
+  String get name => 'missing_semantics_label';
+
+  @override
+  String get message =>
+      'Icon and Image widgets should have a semanticLabel, be wrapped '
       'with Semantics, or wrapped with ExcludeSemantics if decorative. '
       'Clickable widgets (e.g. IconButton, FloatingActionButton) that use '
       'icon-only content should provide a tooltip or ensure the icon has '
-      'an accessible label.',
-  correctionMessage:
+      'an accessible label.';
+
+  @override
+  String get correctionMessage =>
       'Add a semanticLabel argument, provide a tooltip on the clickable '
       'widget, wrap with Semantics(label: "..."), or wrap with '
-      'ExcludeSemantics if decorative.',
-  onInstanceCreation: checkMissingSemanticsLabel,
-);
+      'ExcludeSemantics if decorative.';
+
+  @override
+  void checkInstanceCreation(
+    InstanceCreationExpression node,
+    void Function(AstNode) report,
+  ) {
+    final typeName = constructorTypeName(node);
+
+    if (_targetWidgets.contains(typeName)) {
+      if (hasNamedNonNull(node, 'semanticLabel')) return;
+      if (_isWrappedWithSemantics(node)) return;
+      if (_hasClickableAncestorWithTooltipOrIconLabel(node)) return;
+      report(node);
+      return;
+    }
+
+    if (_clickableWidgets.contains(typeName)) {
+      if (hasNamedNonNull(node, 'tooltip')) return;
+      if (_isWrappedWithSemantics(node)) return;
+      if (_hasIconChildWithSemanticLabel(node)) return;
+      report(node);
+    }
+  }
+}
 
 const _targetWidgets = {'Icon', 'Image', 'ImageIcon'};
 const _clickableWidgets = {
@@ -24,28 +52,6 @@ const _clickableWidgets = {
   'ElevatedButton',
   'OutlinedButton',
 };
-
-void checkMissingSemanticsLabel(
-  InstanceCreationExpression node,
-  void Function(AstNode) report,
-) {
-  final typeName = constructorTypeName(node);
-
-  if (_targetWidgets.contains(typeName)) {
-    if (hasNamedNonNull(node, 'semanticLabel')) return;
-    if (_isWrappedWithSemantics(node)) return;
-    if (_hasClickableAncestorWithTooltipOrIconLabel(node)) return;
-    report(node);
-    return;
-  }
-
-  if (_clickableWidgets.contains(typeName)) {
-    if (hasNamedNonNull(node, 'tooltip')) return;
-    if (_isWrappedWithSemantics(node)) return;
-    if (_hasIconChildWithSemanticLabel(node)) return;
-    report(node);
-  }
-}
 
 bool _isWrappedWithSemantics(AstNode node) {
   AstNode? current = node.parent;

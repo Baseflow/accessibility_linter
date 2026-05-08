@@ -11,7 +11,7 @@ class A11yChecker extends RecursiveAstVisitor<void> {
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
     super.visitInstanceCreationExpression(node);
     for (final rule in allRules) {
-      rule.onInstanceCreation?.call(
+      rule.checkInstanceCreation(
         node,
         (n) => violations.add(Violation(n, rule.name, rule.message)),
       );
@@ -22,7 +22,7 @@ class A11yChecker extends RecursiveAstVisitor<void> {
   void visitMethodInvocation(MethodInvocation node) {
     super.visitMethodInvocation(node);
     for (final rule in allRules) {
-      rule.onMethodInvocation?.call(
+      rule.checkMethodInvocation(
         node,
         (n) => violations.add(Violation(n, rule.name, rule.message)),
       );

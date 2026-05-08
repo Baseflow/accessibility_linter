@@ -1,18 +1,36 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
-import '../shared/rule_spec.dart';
+import '../shared/a11y_rule.dart';
 import '../utils/ast_utils.dart';
 
-const insufficientTapTargetSizeSpec = RuleSpec(
-  name: 'insufficient_tap_target_size',
-  message: 'Tappable widget has an insufficient tap target size. '
-      'WCAG 2.5.8 requires a minimum of 24x24 logical pixels.',
-  correctionMessage:
+class InsufficientTapTargetSizeRule extends A11yRule {
+  @override
+  String get name => 'insufficient_tap_target_size';
+
+  @override
+  String get message => 'Tappable widget has an insufficient tap target size. '
+      'WCAG 2.5.8 requires a minimum of 24x24 logical pixels.';
+
+  @override
+  String get correctionMessage =>
       'Ensure the tappable widget is at least 24x24 logical pixels. '
       'Use SizedBox(width: 24, height: 24, child: ...) or ensure the '
-      'widget style does not override the minimum size below 24x24.',
-  onInstanceCreation: checkInsufficientTapTargetSize,
-);
+      'widget style does not override the minimum size below 24x24.';
+
+  @override
+  void checkInstanceCreation(
+    InstanceCreationExpression node,
+    void Function(AstNode) report,
+  ) {
+    if (!_tappableWidgets.contains(constructorTypeName(node))) return;
+
+    if (_isWrappedInShrinkBox(node) ||
+        _hasInsufficientSizingAncestor(node) ||
+        _hasInsufficientMinimumSizeInStyle(node)) {
+      report(node);
+    }
+  }
+}
 
 const _minTapSize = 24.0;
 const _tappableWidgets = {
@@ -28,19 +46,6 @@ const _tappableWidgets = {
   'ExtendedFloatingActionButton',
 };
 const _sizingWidgets = {'SizedBox', 'Container'};
-
-void checkInsufficientTapTargetSize(
-  InstanceCreationExpression node,
-  void Function(AstNode) report,
-) {
-  if (!_tappableWidgets.contains(constructorTypeName(node))) return;
-
-  if (_isWrappedInShrinkBox(node) ||
-      _hasInsufficientSizingAncestor(node) ||
-      _hasInsufficientMinimumSizeInStyle(node)) {
-    report(node);
-  }
-}
 
 bool _isWrappedInShrinkBox(AstNode node) {
   AstNode? current = node.parent;

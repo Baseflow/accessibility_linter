@@ -1,28 +1,34 @@
 import 'package:analyzer/dart/ast/ast.dart';
 
-import '../shared/rule_spec.dart';
+import '../shared/a11y_rule.dart';
 import '../utils/ast_utils.dart';
 
-const missingPersistentInputLabelSpec = RuleSpec(
-  name: 'missing_persistent_input_label',
-  message: 'Input widgets should expose a persistent label. Placeholders/hints '
-      'alone are not sufficient because they disappear during entry.',
-  correctionMessage:
+class MissingPersistentInputLabelRule extends A11yRule {
+  @override
+  String get name => 'missing_persistent_input_label';
+
+  @override
+  String get message =>
+      'Input widgets should expose a persistent label. Placeholders/hints '
+      'alone are not sufficient because they disappear during entry.';
+
+  @override
+  String get correctionMessage =>
       'Provide a persistent label using InputDecoration(labelText: "...") '
-      'or InputDecoration(label: Text("...")).',
-  onInstanceCreation: checkMissingPersistentInputLabel,
-);
+      'or InputDecoration(label: Text("...")).';
+
+  @override
+  void checkInstanceCreation(
+    InstanceCreationExpression node,
+    void Function(AstNode) report,
+  ) {
+    if (!_inputWidgets.contains(constructorTypeName(node))) return;
+    if (_hasPersistentLabel(node)) return;
+    report(node);
+  }
+}
 
 const _inputWidgets = {'TextField', 'TextFormField'};
-
-void checkMissingPersistentInputLabel(
-  InstanceCreationExpression node,
-  void Function(AstNode) report,
-) {
-  if (!_inputWidgets.contains(constructorTypeName(node))) return;
-  if (_hasPersistentLabel(node)) return;
-  report(node);
-}
 
 bool _hasPersistentLabel(InstanceCreationExpression node) {
   final decorationArg = getNamedArg(node, 'decoration');

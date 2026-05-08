@@ -117,40 +117,45 @@ Each rule lives entirely in a single self-contained file under `lib/src/rules/`.
 
 ### 1. Create `lib/src/rules/my_new_rule.dart`
 
-Define the check function and a `RuleSpec` constant in the same file:
+Create a class extending `A11yRule`. Override `name`, `message`, `correctionMessage`, and whichever check method(s) apply:
 
 ```dart
 import 'package:analyzer/dart/ast/ast.dart';
 
-import '../shared/rule_spec.dart';
+import '../shared/a11y_rule.dart';
 
-const myNewRuleSpec = RuleSpec(
-  name: 'my_new_rule',
-  message: 'Short description of what is wrong.',
-  correctionMessage: 'Suggestion shown in the IDE on how to fix it.',
-  onInstanceCreation: checkMyNewRule, // or onMethodInvocation for method calls
-);
+class MyNewRule extends A11yRule {
+  @override
+  String get name => 'my_new_rule';
 
-void checkMyNewRule(
-  InstanceCreationExpression node,
-  void Function(AstNode) report,
-) {
-  // Inspect the AST node. Call report(node) when a violation is detected.
+  @override
+  String get message => 'Short description of what is wrong.';
+
+  @override
+  String get correctionMessage => 'Suggestion shown in the IDE on how to fix it.';
+
+  @override
+  void checkInstanceCreation(
+    InstanceCreationExpression node,
+    void Function(AstNode) report,
+  ) {
+    // Inspect the AST node. Call report(node) when a violation is detected.
+  }
 }
 ```
 
-Use `onInstanceCreation` for widget constructor calls and `onMethodInvocation` for static/instance method calls. Both can be provided if needed.
+Override `checkInstanceCreation` for widget constructor calls, `checkMethodInvocation` for static/instance method calls, or both if needed. Unneeded methods can be omitted — the default implementations are no-ops.
 
 ### 2. Register it in `lib/src/shared/all_rules.dart`
 
-Add one import and one entry to the list:
+Add one import and one instance to the list:
 
 ```dart
 import '../rules/my_new_rule.dart';
 
-const List<RuleSpec> allRules = [
+final List<A11yRule> allRules = [
   // ... existing rules ...
-  myNewRuleSpec,
+  MyNewRule(),
 ];
 ```
 
@@ -175,14 +180,14 @@ lib/
   src/
     rules/
       a11y_analysis_rule.dart      # Generic AnalysisRule wrapper (IDE only)
-      orientation_lock.dart        # Check fn + RuleSpec (one file per rule)
+      orientation_lock.dart        # A11yRule subclass (one file per rule)
       missing_semantics_label.dart
       missing_focus_indicator.dart
       missing_persistent_input_label.dart
       insufficient_tap_target_size.dart
       insufficient_color_contrast.dart
     shared/
-      rule_spec.dart               # RuleSpec data class
+      a11y_rule.dart               # Abstract base class for all rules
       all_rules.dart               # Canonical list — the only registration point
       color_data.dart              # Known Flutter color values
     cli/
@@ -192,7 +197,7 @@ lib/
     utils/
       ast_utils.dart               # Shared AST helpers
 bin/
-  a11y_analyze.dart                # CLI entry point (~22 lines)
+  a11y_analyze.dart                # CLI entry point
 ```
 
-The `RuleSpec` data class is the bridge between the two entry points. The CLI drives a `RecursiveAstVisitor` from `allRules` directly. The IDE wraps each spec in a generic `A11yAnalysisRule` that registers `SimpleAstVisitor` callbacks with the analysis server registry.
+`A11yRule` is the bridge between both entry points. The CLI drives a `RecursiveAstVisitor` from `allRules`, calling `checkInstanceCreation` and `checkMethodInvocation` on each rule directly. The IDE wraps each rule in a generic `A11yAnalysisRule` that registers `SimpleAstVisitor` callbacks with the analysis server registry. The default no-op implementations on `A11yRule` mean rules only override the methods they need.

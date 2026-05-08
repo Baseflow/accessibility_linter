@@ -5,18 +5,18 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-import '../shared/rule_spec.dart';
+import '../shared/a11y_rule.dart';
 
 class A11yAnalysisRule extends AnalysisRule {
-  final RuleSpec spec;
+  final A11yRule rule;
   late final LintCode _code;
 
-  A11yAnalysisRule(this.spec)
-      : super(name: spec.name, description: spec.message) {
+  A11yAnalysisRule(this.rule)
+      : super(name: rule.name, description: rule.message) {
     _code = LintCode(
-      spec.name,
-      spec.message,
-      correctionMessage: spec.correctionMessage,
+      rule.name,
+      rule.message,
+      correctionMessage: rule.correctionMessage,
     );
   }
 
@@ -26,32 +26,28 @@ class A11yAnalysisRule extends AnalysisRule {
   @override
   void registerNodeProcessors(
       RuleVisitorRegistry registry, RuleContext context) {
-    if (spec.onInstanceCreation != null) {
-      registry.addInstanceCreationExpression(
-          this, _InstanceCreationVisitor(this, spec));
-    }
-    if (spec.onMethodInvocation != null) {
-      registry.addMethodInvocation(this, _MethodInvocationVisitor(this, spec));
-    }
+    registry.addInstanceCreationExpression(
+        this, _InstanceCreationVisitor(this, rule));
+    registry.addMethodInvocation(this, _MethodInvocationVisitor(this, rule));
   }
 }
 
 class _InstanceCreationVisitor extends SimpleAstVisitor<void> {
-  final A11yAnalysisRule rule;
-  final RuleSpec spec;
-  _InstanceCreationVisitor(this.rule, this.spec);
+  final A11yAnalysisRule analysisRule;
+  final A11yRule rule;
+  _InstanceCreationVisitor(this.analysisRule, this.rule);
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) =>
-      spec.onInstanceCreation!(node, rule.reportAtNode);
+      rule.checkInstanceCreation(node, analysisRule.reportAtNode);
 }
 
 class _MethodInvocationVisitor extends SimpleAstVisitor<void> {
-  final A11yAnalysisRule rule;
-  final RuleSpec spec;
-  _MethodInvocationVisitor(this.rule, this.spec);
+  final A11yAnalysisRule analysisRule;
+  final A11yRule rule;
+  _MethodInvocationVisitor(this.analysisRule, this.rule);
 
   @override
   void visitMethodInvocation(MethodInvocation node) =>
-      spec.onMethodInvocation!(node, rule.reportAtNode);
+      rule.checkMethodInvocation(node, analysisRule.reportAtNode);
 }
